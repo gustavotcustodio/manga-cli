@@ -1,0 +1,44 @@
+#!/bin/bash
+
+if [ -z "$*" ]; then 
+  echo -n "Search: "
+  read -r query
+fi
+echo "Searching..."
+# sanitise the query
+query=$(sed \
+	-e 's|+|%2B|g'\
+	-e 's|#|%23|g'\
+	-e 's|&|%26|g'\
+	-e 's| |+|g'\
+	<<< "$query")
+response="$(curl -s "https://mangafast.net/?s=$query" |\
+  grep -oP "a href=\"https:\/\/mangafast\.net\/read\/.*?\/")"
+manga=$(echo $response | sed 's|a href="||g' | sed -e 's| |\n|g' | fzf)
+
+echo "Fetching chapters..."
+chapters="$(curl -s "$manga" |\
+  grep -oP "https:\/\/mangafast\.net.*-chapter-.*\/")"
+
+readingchapter=$(echo $chapters | sed -e 's| |\n|g' | fzf) 
+
+echo "Downloading pages..."
+pages="$(curl -s "$readingchapter" |\
+  grep -oP "https:\/\/.*page-[0-9]+\.(jpg|png)\?q=70" |\
+  sed -e 's|?q=70||g')"
+
+cachedir=$HOME/.cache/mangareader
+mkdir $HOME/.cache
+mkdir $cachedir
+
+i=1
+# download all the pages and rename them, so sxiv will pop everything in the correct order
+for linkpage in $pages; do
+  # get images extension
+  extension=$(echo $linkpage | grep -oP "\.(jpg|png)")
+  wget -O "$cachedir/page$(echo $i | awk '{printf("%03d", $i)}')$extension" "$linkpage"
+  i=$((i+1))
+done
+echo "Finished downloading."
+sxiv -a "$cachedir"/*png "$cachedir"/*jpg 
+rm "$cachedir"/*png "$cachedir"/*jpg 
