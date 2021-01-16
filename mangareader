@@ -31,14 +31,23 @@ cachedir=$HOME/.cache/mangareader
 mkdir $HOME/.cache
 mkdir $cachedir
 
+maxcpus=$(lscpu | grep "^CPU(s):" | awk '{printf("%d", $2)}')
+cpu=0
 i=1
 # download all the pages and rename them, so sxiv will pop everything in the correct order
 for linkpage in $pages; do
   # get images extension
   extension=$(echo $linkpage | grep -oP "\.(jpg|png)")
-  wget -O "$cachedir/page$(echo $i | awk '{printf("%03d", $i)}')$extension" "$linkpage"
+  wget -O "$cachedir/page$(echo $i | awk '{printf("%03d", $i)}')$extension" "$linkpage" &
   i=$((i+1))
+  cpu=$((cpu+1))
+  if [ $(($cpu % $maxcpus)) == 0 ]
+  then
+    # wait til all process have finished
+    wait
+  fi
 done
+# wait remaining process to finish 
+wait
 echo "Finished downloading."
 sxiv -a "$cachedir"/*png "$cachedir"/*jpg 
-rm "$cachedir"/*png "$cachedir"/*jpg 
