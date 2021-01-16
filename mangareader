@@ -14,13 +14,16 @@ query=$(sed \
 	<<< "$query")
 response="$(curl -s "https://mangafast.net/?s=$query" |\
   grep -oP "a href=\"https:\/\/mangafast\.net\/read\/.*?\/")"
-manga=$(echo $response | sed 's|a href="||g' | sed -e 's| |\n|g' | fzf)
+
+links=$(echo $response | sed 's|a href="||g' | sed -e 's| |\n|g')
+manga=$(echo "$links" | grep -P "$(echo "$links" | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)/$")
 
 echo "Fetching chapters..."
 chapters="$(curl -s "$manga" |\
-  grep -oP "https:\/\/mangafast\.net.*-chapter-.*\/")"
+grep -oP "https:\/\/mangafast\.net.*-chapter-.*\/")"
 
-readingchapter=$(echo $chapters | sed -e 's| |\n|g' | fzf) 
+chapterlinks=$(echo $chapters | sed -e 's| |\n|g') 
+readingchapter=$(echo "$chapterlinks" | grep -P "$(echo "$chapterlinks" | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)/$")
 
 echo "Downloading pages..."
 pages="$(curl -s "$readingchapter" |\
@@ -51,3 +54,4 @@ done
 wait
 echo "Finished downloading."
 sxiv -a "$cachedir"/*png "$cachedir"/*jpg 
+rm $cachedir/*png $cachedir/*jpg 
