@@ -1,11 +1,11 @@
 # mangareader
 Download manga chapters through terminal and read them using sxiv.
 
-This shell script download manga chapters from [mangafast](https://mangafast.net).
+A cli (command line interface) to [mangafast](https://mangafast.net).
 
 The script will create the folder:
 
-  - `~/.config/mangareader`
+  - `./tile-name/chapter`
 
 You need to install:
   - fzf (Search Titles)

@@ -4,6 +4,9 @@ if [ -z "$*" ]; then
   echo -n "Search: "
   read -r query
 fi
+# if the search query is empty, quit
+if [ -z "$query" ]; then exit; fi 
+
 echo "Searching..."
 # sanitise the query
 query=$(sed \
@@ -12,27 +15,52 @@ query=$(sed \
 	-e 's|&|%26|g'\
 	-e 's| |+|g'\
 	<<< "$query")
+
+# remove the file with the list of link to downlaod
+if [ -f "urlslist" ]; then rm urlslist; fi
+
 response="$(curl -s "https://mangafast.net/?s=$query" |\
   grep -oP "a href=\"https:\/\/mangafast\.net\/read\/.*?\/")"
 
-links=$(echo $response | sed 's|a href="||g' | sed -e 's| |\n|g')
-manga=$(echo "$links" | grep -P "$(echo "$links" | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)/$")
+# quit if no search results are found
+if [ -z "$response" ]; then
+  echo "No results found."
+  exit
+fi 
+
+echo "Page 1"
+page=2
+# loop thorugh pages until no manga is found
+while [ -n "$response" ]; do
+  echo $response | sed 's|a href="||g' | sed -e 's| |\n|g' >> urlslist
+  response="$(curl -s "https://mangafast.net/page/$page/?s=$query" |\
+    grep -oP "a href=\"https:\/\/mangafast\.net\/read\/.*?\/")"
+  echo "Page "$page
+  page=$((page+1))
+done
+
+# use the manga name to create a folder later
+manganame=$(cat urlslist | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)
+# get url containing the list of chapters from the manga
+mangalink=$(cat urlslist | grep -P "$manganame/$")
 
 echo "Fetching chapters..."
-chapters="$(curl -s "$manga" |\
-grep -oP "https:\/\/mangafast\.net.*-chapter-.*\/")"
+foundchapters="$(curl -s "$mangalink" |\
+  grep -oP "https:\/\/mangafast\.net.*-chapter-.*\/")"
 
-chapterlinks=$(echo $chapters | sed -e 's| |\n|g') 
-readingchapter=$(echo "$chapterlinks" | grep -P "$(echo "$chapterlinks" | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)/$")
+allchapterslinks=$(echo $foundchapters | sed -e 's| |\n|g') 
 
+# use the chapter number later to create a folder
+chapternumber=$(echo "$allchapterslinks" | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)
+chapterlink=$(echo "$allchapterslinks" | grep -P "$chapternumber/$")
 echo "Downloading pages..."
-pages="$(curl -s "$readingchapter" |\
+pages="$(curl -s "$chapterlink" |\
   grep -oP "https:\/\/.*page-[0-9]+\.(jpg|png)\?q=70" |\
   sed -e 's|?q=70||g')"
 
-cachedir=$HOME/.cache/mangareader
-mkdir $HOME/.cache
-mkdir $cachedir
+outputdir=./$manganame/$chapternumber
+mkdir ./$manganame
+mkdir $outputdir
 
 maxcpus=$(lscpu | grep "^CPU(s):" | awk '{printf("%d", $2)}')
 cpu=0
@@ -41,7 +69,7 @@ i=1
 for linkpage in $pages; do
   # get images extension
   extension=$(echo $linkpage | grep -oP "\.(jpg|png)")
-  wget -O "$cachedir/page$(echo $i | awk '{printf("%03d", $i)}')$extension" "$linkpage" &
+  wget -O "$outputdir/page$(echo $i | awk '{printf("%03d", $i)}')$extension" "$linkpage" &
   i=$((i+1))
   cpu=$((cpu+1))
   if [ $(($cpu % $maxcpus)) == 0 ]
@@ -53,5 +81,4 @@ done
 # wait remaining process to finish 
 wait
 echo "Finished downloading."
-sxiv -a "$cachedir"/*png "$cachedir"/*jpg 
-rm $cachedir/*png $cachedir/*jpg 
+sxiv -a "$outputdir"/*png "$outputdir"/*jpg 
