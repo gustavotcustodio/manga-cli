@@ -40,9 +40,9 @@ while [ -n "$response" ]; do
 done
 
 # use the manga name to create a folder later
-manganame=$(cat urlslist | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)
+manganame=$(sed 's/\/$//g' urlslist | grep -o -e "[^/]*$" | fzf)
 # get url containing the list of chapters from the manga
-mangalink=$(cat urlslist | grep -P "$manganame/$")
+mangalink=$(grep -P "$manganame/$" urlslist)
 
 echo "Fetching chapters..."
 foundchapters="$(curl -s "$mangalink" |\
