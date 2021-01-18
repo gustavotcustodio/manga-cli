@@ -102,27 +102,25 @@ mkdir ./$manganame
 echo "Fetching chapters..."
 allchapterslinks="$(curl -s "$mangalink" |\
   grep -oP "https:\/\/mangafast\.net.*-chapter-.*\/" |\
-  sed 's/\ /\n/g' | sort)"
+  sed 's/\ /\n/g')"
 
 # check if the flags -f or -t are present
 if [[ $* == *-f* || $* == *-t* ]]; then
   # filter only the chapter numbers between $FROM and $TO
-  # replace "-" for "." in order to compare the numbers
   filteredchapternumbers="$(echo "$allchapterslinks" |\
-    sed 's/\/$//g' | grep -oP "[0-9]+-?[0-9]*$" | sed 's/-/./g' |\
-    awk -v s=$FROM -v e=$TO '{if($1>=s && $1<=e)printf($1"\n")}' |\
-    sed 's/\./-/g')"
-
+    sed 's/\/$//g' | grep -oP "[0-9]+(-[a-z0-9]+)?$" | sed 's/-/ -/g' |\
+    awk -v s=$FROM -v e=$TO '{if($1>=s && $1<=e)printf($1$2"\n")}')"
   # get the url prefix for the manga chapters
-  urlprefix="$(echo $allchapterslinks | cut -f 1 -d " " | sed 's/[0-9]\+-\?[0-9]*\/$//g')"
+  urlprefix="$(echo $allchapterslinks | cut -f 1 -d " " | sed 's/[0-9]\+-\?[a-z0-9]*\/$//g')"
   for chapternumber in $filteredchapternumbers; do
     chapterlink="$urlprefix$chapternumber/"
+    echo $chapterlink
     downloadpages $manganame $chapternumber $chapterlink $maxcpus
   done
 else
   # use the chapter number later to create a folder
   chapternumber=$(echo "$allchapterslinks" | sed 's/\/$//g' |\
-    grep -oP "[0-9]+-?[0-9]*$"  | fzf)
+    grep -oP "[0-9]+(-[a-z0-9]+)?$" | fzf)
   chapterlink=$(echo "$allchapterslinks" | grep -P "$chapternumber/$")
   downloadpages $manganame $chapternumber $chapterlink $maxcpus
 fi
