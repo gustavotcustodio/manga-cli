@@ -1,8 +1,57 @@
 #!/bin/bash
+FROM=1
+TO=4294967296
+while getopts "hm:f:t:s" OPT; do
+  case $OPT in
+    "h") usage;; # show help
+    "m") TITLE=$OPTARG;;
+    "f") FROM=$OPTARG;;
+    "t") TO=$OPTARG;;
+    "?") exit -1;;
+  esac
+done
 
-if [ -z "$*" ]; then 
+function downloadpages() {
+  manganame=$1
+  chapternumber=$2
+  chapterlink=$3
+  maxcpus=$4
+
+  outputdir=./$manganame/$chapternumber
+  mkdir $outputdir
+
+  echo "Downloading chapter $chapternumber..."
+  echo $chapterlink
+  pages="$(curl -s "$chapterlink" |\
+    grep -oP "https:\/\/.*page-[0-9]+\.(jpg|png)\?q=70" | sed 's/?q=70//g')"
+  cpu=0
+  i=1
+  # download all the pages and rename them, so sxiv will pop everything in the correct order
+  for linkpage in $pages; do
+    # get images extension
+    extension=$(echo $linkpage | grep -oP "\.(jpg|png)")
+    wget -O "$outputdir/page$(echo $i | awk '{printf("%03d", $i)}')$extension" "$linkpage" &
+    i=$((i+1))
+    cpu=$((cpu+1))
+    if [ $(($cpu % $maxcpus)) == 0 ]
+    then
+      # wait til all process have finished
+      wait
+    fi
+  done
+  # wait remaining process to finish 
+  wait
+  echo "Finished downloading."
+}
+
+# Total numbers of CPUs
+maxcpus=$(lscpu | grep "^CPU(s):" | awk '{printf("%d", $2)}')
+
+if [ -z "$TITLE" ]; then 
   echo -n "Search: "
   read -r query
+else
+  query=$TITLE
 fi
 # if the search query is empty, quit
 if [ -z "$query" ]; then exit; fi 
@@ -16,7 +65,7 @@ query=$(sed \
 	-e 's| |+|g'\
 	<<< "$query")
 
-# remove the file with the list of link to downlaod
+# remove the file with the list of link to download
 if [ -f "urlslist" ]; then rm urlslist; fi
 
 response="$(curl -s "https://mangafast.net/?s=$query" |\
@@ -39,46 +88,46 @@ while [ -n "$response" ]; do
   page=$((page+1))
 done
 
-# use the manga name to create a folder later
-manganame=$(cat urlslist | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)
+# if there is only one result, no need to run fzf
+if [ $(cat urlslist | wc -l) -gt 1 ]; then
+  # use the manga name to create a folder later
+  manganame=$(sed 's/\/$//g' urlslist | grep -o -E "[^/]*$" | fzf)
+else
+  manganame=$(sed 's/\/$//g' urlslist | grep -o -E "[^/]*$")
+fi
 # get url containing the list of chapters from the manga
-mangalink=$(cat urlslist | grep -P "$manganame/$")
+mangalink=$(grep -P "$manganame/$" urlslist)
+mkdir ./$manganame
 
 echo "Fetching chapters..."
-foundchapters="$(curl -s "$mangalink" |\
-  grep -oP "https:\/\/mangafast\.net.*-chapter-.*\/")"
+allchapterslinks="$(curl -s "$mangalink" |\
+  grep -oP "https:\/\/mangafast\.net.*-chapter-.*\/" |\
+  sed 's/\ /\n/g' | sort)"
 
-allchapterslinks=$(echo $foundchapters | sed -e 's| |\n|g') 
+# check if the flags -f or -t are present
+if [[ $* == *-f* || $* == *-t* ]]; then
+  # filter only the chapter numbers between $FROM and $TO
+  # replace "-" for "." in order to compare the numbers
+  filteredchapternumbers="$(echo "$allchapterslinks" |\
+    sed 's/\/$//g' | grep -oP "[0-9]+-?[0-9]*$" | sed 's/-/./g' |\
+    awk -v s=$FROM -v e=$TO '{if($1>=s && $1<=e)printf($1"\n")}' |\
+    sed 's/\./-/g')"
 
-# use the chapter number later to create a folder
-chapternumber=$(echo "$allchapterslinks" | sed 's/\/$//g' | grep -o -E "[^/]*$" | fzf)
-chapterlink=$(echo "$allchapterslinks" | grep -P "$chapternumber/$")
-echo "Downloading pages..."
-pages="$(curl -s "$chapterlink" |\
-  grep -oP "https:\/\/.*page-[0-9]+\.(jpg|png)\?q=70" |\
-  sed -e 's|?q=70||g')"
+  # get the url prefix for the manga chapters
+  urlprefix="$(echo $allchapterslinks | cut -f 1 -d " " | sed 's/[0-9]\+-\?[0-9]*\/$//g')"
+  for chapternumber in $filteredchapternumbers; do
+    chapterlink="$urlprefix$chapternumber/"
+    downloadpages $manganame $chapternumber $chapterlink $maxcpus
+  done
+else
+  # use the chapter number later to create a folder
+  chapternumber=$(echo "$allchapterslinks" | sed 's/\/$//g' |\
+    grep -oP "[0-9]+-?[0-9]*$"  | fzf)
+  chapterlink=$(echo "$allchapterslinks" | grep -P "$chapternumber/$")
+  downloadpages $manganame $chapternumber $chapterlink $maxcpus
+fi
 
-outputdir=./$manganame/$chapternumber
-mkdir ./$manganame
-mkdir $outputdir
-
-maxcpus=$(lscpu | grep "^CPU(s):" | awk '{printf("%d", $2)}')
-cpu=0
-i=1
-# download all the pages and rename them, so sxiv will pop everything in the correct order
-for linkpage in $pages; do
-  # get images extension
-  extension=$(echo $linkpage | grep -oP "\.(jpg|png)")
-  wget -O "$outputdir/page$(echo $i | awk '{printf("%03d", $i)}')$extension" "$linkpage" &
-  i=$((i+1))
-  cpu=$((cpu+1))
-  if [ $(($cpu % $maxcpus)) == 0 ]
-  then
-    # wait til all process have finished
-    wait
-  fi
-done
-# wait remaining process to finish 
-wait
-echo "Finished downloading."
-sxiv -a "$outputdir"/*png "$outputdir"/*jpg 
+# if the flag -s is passed, pop up sxiv
+if [[ $* == *-s* ]]; then
+  sxiv -r "$manganame"
+fi
