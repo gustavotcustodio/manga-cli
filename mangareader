@@ -41,13 +41,24 @@ fi
 
 title=$(echo "$response" | sed 's/\"//g;s/a\ href=\/Manga\///g' | fzf)
 
+chapters=$(curl -s "https://w12.mangafreak.net/Manga/$title" |\
+    grep -oP "Read1.+?\"" | sed 's/\"//g;s/Read1_.\+_//g' | sort -u -n)
+lastchapter=$(echo $chapters | rev | cut -d ' ' -f1 | rev)
+
 if [[ $* == *-f* || $* == *-t* ]]; then
-  firstchapter=$FROM
-  lastchapter=$TO
+
+  if [ "$FROM" -gt 1 ]; then
+    firstchapter=$FROM
+  else
+    firstchapter=1
+  fi
+
+  if [ "$TO" -lt "$lastchapter" ]; then
+    lastchapter=$TO
+  fi
+
 else
-  firstchapter=$(curl -s "https://w12.mangafreak.net/Manga/$title" |\
-    grep -oP "Read1.+?\"" | sed 's/\"//g;s/Read1_.\+_//g' |
-    sort -u -n | fzf)
+  firstchapter=$(echo "$chapters" | fzf)
   lastchapter=$firstchapter
 fi
 
