@@ -24,7 +24,7 @@ get_chapters_names () {
 }
 
 get_last_chapter () {
-    read last_chapter <<-EOF
+    read -r last_chapter <<-EOF
     "$1"
     echo "$1"
 	EOF
@@ -51,7 +51,7 @@ chapters_matching_number () {
 clean_chaptername () {
     chapternumber="$2"
 
-    chaptername_prefix=$(printf "chapter-%03d%s"  "$chapternumber")
+    chaptername_prefix=$(printf "chapter-%03d"  "$chapternumber")
 
     # Get the last part after the chapter number
     chaptername_suffix=$(echo "$1" |
@@ -87,15 +87,15 @@ download_chapter () {
 
     fixed_chaptername=$(clean_chaptername "$chaptername" "$chapter_number")
 
-    mkdir -p ${mangatitle}/${fixed_chaptername}
-    for page_url in `get_chapter_images "$mangatitle" "$chaptername"`; do
+    mkdir -p "${mangatitle}"/"${fixed_chaptername}"
+    for page_url in $(get_chapter_images "$mangatitle" "$chaptername"); do
         # Get page number
         page=$(echo "$page_url" |
             grep -oP "[0-9]+\.jpg" | sed 's/\.jpg//g')
 
         # Fix the chapter name, adding zeroes to the chapter number
         download_image "https://$page_url" > \
-            "${mangatitle}/${fixed_chaptername}/p$(echo $page |
+            "${mangatitle}/${fixed_chaptername}/p$(echo "$page" |
             awk '{printf("%03d", $page)}').jpg"
     done
 }
@@ -104,7 +104,7 @@ download_multiple_chapters () {
     first_selected="$1"
     last_selected="$2"
 
-    for chapter_number in `seq $first_selected $last_selected`; do
+    for chapter_number in $(seq "$first_selected" "$last_selected"); do
         matching_chapters=$(chapters_matching_number "$chapter_number" "$chapters")
         for chapter in $matching_chapters; do
             echo "Downloading chapter ${chapter_number}..."
@@ -144,7 +144,7 @@ while getopts "ht:n" OPT; do
 done
 
 if [ -z "$query" ]; then
-    echo -n "Search manga: "
+    printf "Search manga: "
     read -r query
 fi
 
@@ -161,7 +161,7 @@ last_chapter=$(get_last_chapter "$chapters")
 echo "Download a single chapter: chapter_number"
 echo "Download multiple chapters: first_chapter last_chapter"
 printf "Available chapters (1-%d): " "${last_chapter}"
-read first_selected last_selected
+read -r first_selected last_selected
 
 # If only a single chapter is selected
 if [ -z "$last_selected" ]; then
