@@ -14,9 +14,8 @@ die () {
 search_title () {
     query=$(echo "$1" | sed 's/\ /%20/g')
     curl -s "https://mangabuddy.com/api/manga/search?q=${query}" |
-        grep -oP 'alt="[0-9a-zA-Z\s]+' |
-        sed 's/alt="//g' |
-        sed 's/\ /-/g'
+        grep -oP 'thumb\/[0-9a-z\-]+' |
+        sed 's/thumb\///g'
 }
 
 get_chapters_names () {
