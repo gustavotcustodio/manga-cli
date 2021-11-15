@@ -1,0 +1,179 @@
+#!/bin/sh
+usage () {
+    echo 'Usage:'
+    echo ' -h    help text'
+    echo ' -t    manga title'
+    echo ' -n    do not open sxiv after downloading'
+}
+
+die () {
+    echo "$1"
+	exit 1
+}
+
+search_title () {
+    query=$(echo "$1" | sed 's/\ /%20/g')
+    curl -s "https://mangabuddy.com/api/manga/search?q=${query}" |
+        grep -oP 'alt="[0-9a-zA-Z\s]+' |
+        sed 's/alt="//g' |
+        sed 's/\ /-/g'
+}
+
+get_chapters_names () {
+    curl -s "https://mangabuddy.com/api/manga/$1/chapters" |
+        grep -oP "([a-z0-9]+\-)*chapter\-[0-9]+(\-[a-z0-9]+)*"
+}
+
+get_last_chapter () {
+    read last_chapter <<-EOF
+    "$1"
+    echo "$1"
+	EOF
+    echo "$last_chapter" |
+        grep -oP 'chapter\-[0-9]+' |
+        sed 's/chapter\-//g'
+}
+
+get_chapter_images () {
+    title="$1"
+    chapter="$2"
+    curl -s "https://mangabuddy.com/${title}/${chapter}" |
+        grep -o "static.*\/manga\/.*[0-9].jpg'" |
+        sed "s/'//g"
+}
+
+chapters_matching_number () {
+    chapter_number="$1"
+    chapters="$2"
+    echo "${chapters}" |
+        grep -oP "([a-z0-9]+\-)*chapter\-${chapter_number}(\-[a-z0-9]+)*$"
+}
+
+clean_chaptername () {
+    chapternumber="$2"
+
+    chaptername_prefix=$(printf "chapter-%03d%s"  "$chapternumber")
+
+    # Get the last part after the chapter number
+    chaptername_suffix=$(echo "$1" |
+        grep -oP "chapter(\-[0-9a-z]+)+" |
+        sed 's/chapter-[a-z0-9]\+//g')
+
+    echo "${chaptername_prefix}${chaptername_suffix}"
+}
+
+download_image () {
+    url="$1"
+    curl --silent "$url" \
+      -H 'authority: static.youmadcdn.xyz' \
+      -H 'pragma: no-cache' \
+      -H 'cache-control: no-cache' \
+      -H 'upgrade-insecure-requests: 1' \
+      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36' \
+      -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9' \
+      -H 'sec-gpc: 1' \
+      -H 'sec-fetch-site: cross-site' \
+      -H 'sec-fetch-mode: navigate' \
+      -H 'sec-fetch-user: ?1' \
+      -H 'sec-fetch-dest: document' \
+      -H 'referer: https://mangabuddy.com/' \
+      -H 'accept-language: en-US,en;q=0.9' \
+      --compressed
+}
+
+download_chapter () {
+    mangatitle="$1"
+    chaptername="$2"
+    chapter_number="$3"
+
+    fixed_chaptername=$(clean_chaptername "$chaptername" "$chapter_number")
+
+    mkdir -p ${mangatitle}/${fixed_chaptername}
+    for page_url in `get_chapter_images "$mangatitle" "$chaptername"`; do
+        # Get page number
+        page=$(echo "$page_url" |
+            grep -oP "[0-9]+\.jpg" | sed 's/\.jpg//g')
+
+        # Fix the chapter name, adding zeroes to the chapter number
+        download_image "https://$page_url" > \
+            "${mangatitle}/${fixed_chaptername}/p$(echo $page |
+            awk '{printf("%03d", $page)}').jpg"
+    done
+}
+
+download_multiple_chapters () {
+    first_selected="$1"
+    last_selected="$2"
+
+    for chapter_number in `seq $first_selected $last_selected`; do
+        matching_chapters=$(chapters_matching_number "$chapter_number" "$chapters")
+        for chapter in $matching_chapters; do
+            echo "Downloading chapter ${chapter_number}..."
+            download_chapter "$title" "$chapter" "$chapter_number"
+        done
+    done
+}
+
+check_inputs () {
+    first_selected="$1"
+    last_selected="$2"
+    last_chapter="$3"
+
+    [ -z "$first_selected" ] && die "Invalid input"
+	[ "$first_selected" -eq "$first_selected" ] 2>/dev/null || die "Invalid number"
+
+    if [ -n "$last_chapter" ]; then
+        [ "$last_selected" -eq "$last_selected" ] 2>/dev/null || die "Invalid number"
+        if [ "$last_chapter" -lt "$last_selected" ]; then
+            die "Chapter out of range"
+        fi
+        if [ "$last_selected" -lt "$first_selected" ]; then
+            die "Invalid range"
+        fi
+    fi
+}
+
+# Command line args processing
+notshow=0
+while getopts "ht:n" OPT; do
+  case $OPT in
+    "h") usage;exit;; # show help
+    "t") query=$OPTARG;;
+    "n") notshow=1;;
+    "?") die "Invalid parameter";;
+  esac
+done
+
+if [ -z "$query" ]; then
+    echo -n "Search manga: "
+    read -r query
+fi
+
+echo "Searching title..."
+response=$(search_title "$query")
+
+[ -z "$response" ] && die "No results found"
+
+title=$(echo "$response" | fzf)
+
+chapters=$(get_chapters_names "$title")
+last_chapter=$(get_last_chapter "$chapters")
+
+echo "Download a single chapter: chapter_number"
+echo "Download multiple chapters: first_chapter last_chapter"
+printf "Available chapters (1-%d): " "${last_chapter}"
+read first_selected last_selected
+
+# If only a single chapter is selected
+if [ -z "$last_selected" ]; then
+    last_selected="$first_selected"
+fi
+
+# Validate chapters numbers
+check_inputs "$first_selected" "$last_selected" "$last_chapter"
+
+download_multiple_chapters "$first_selected" "$last_selected"
+
+if [ "$notshow" -eq 0 ]; then
+    sxiv "${title}"/*
+fi
