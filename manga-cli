@@ -36,9 +36,21 @@ get_last_chapter () {
 get_chapter_images () {
     title="$1"
     chapter="$2"
-    curl -s "https://mangabuddy.com/${title}/${chapter}" |
-        grep -o "static.*\/manga\/.*[0-9].jpg'" |
-        sed "s/'//g"
+    curl -s "https://mangabuddy.com/${title}/${chapter}" \
+        -H 'authority: mangabuddy.com' \
+        -H 'upgrade-insecure-requests: 1' \
+        -H 'user-agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0' \
+        -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9' \
+        -H 'sec-gpc: 1' \
+        -H 'sec-fetch-site: none' \
+        -H 'sec-fetch-mode: navigate' \
+        -H 'sec-fetch-user: ?1' \
+        -H 'sec-fetch-dest: document' \
+        -H 'accept-language: en-US,en;q=0.9' \
+    --compressed |
+        grep -oP "[a-z0-9_]+\.jpg" |
+        sort -u |
+        sed "s|^|https://static.youmadcdn.xyz/manga/${title}/${chapter}/|g"
 }
 
 chapters_matching_number () {
@@ -63,7 +75,7 @@ clean_chaptername () {
 
 download_image () {
     url="$1"
-    curl --silent "$url" \
+    curl -s "$url" \
       -H 'authority: static.youmadcdn.xyz' \
       -H 'pragma: no-cache' \
       -H 'cache-control: no-cache' \
@@ -77,7 +89,7 @@ download_image () {
       -H 'sec-fetch-dest: document' \
       -H 'referer: https://mangabuddy.com/' \
       -H 'accept-language: en-US,en;q=0.9' \
-      --compressed
+  --compressed
 }
 
 download_chapter () {
@@ -88,13 +100,14 @@ download_chapter () {
     fixed_chaptername=$(clean_chaptername "$chaptername" "$chapter_number")
 
     mkdir -p "${mangatitle}"/"${fixed_chaptername}"
+
     for page_url in $(get_chapter_images "$mangatitle" "$chaptername"); do
         # Get page number
         page=$(echo "$page_url" |
             grep -oP "[0-9]+\.jpg" | sed 's/\.jpg//g')
 
         # Fix the chapter name, adding zeroes to the chapter number
-        download_image "https://$page_url" > \
+        download_image "$page_url" > \
             "${mangatitle}/${fixed_chaptername}/p$(echo "$page" |
             awk '{printf("%03d", $page)}').jpg"
     done
