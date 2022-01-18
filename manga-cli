@@ -1,11 +1,5 @@
 #!/bin/sh
 
-red="$(tput setaf 1)"
-green="$(tput setaf 2)"
-yellow="$(tput setaf 3)"
-blue="$(tput setaf 4)"
-purple="$(tput setaf 5)"
-
 usage () {
     echo 'Usage:'
     echo ' -h    help text'
@@ -82,6 +76,7 @@ clean_chaptername () {
     echo "${chaptername_prefix}${chaptername_suffix}"
 }
 download_image () {
+    #url=$(echo "$1" | sed 's/madcdnv2/mbcdnv1/g')
     url="$1"
     # curl -s "$url" \
     #   -H 'authority: static.youmadcdn.xyz' \
@@ -98,10 +93,11 @@ download_image () {
     #   -H 'referer: https://mangabuddy.com/' \
     #   -H 'accept-language: en-US,en;q=0.9' \
     #   --compressed
-
     curl -s "$url" \
+        -H 'authority: s1.mbcdnv1.xyz' \
+        -H 'pragma: no-cache' \
         -H 'Upgrade-Insecure-Requests: 1' \
-        -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36' \
+        -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36' \
         -H 'referer: https://mangabuddy.com/' \
     --compressed
 }
@@ -115,11 +111,14 @@ download_chapter () {
 
     mkdir -p "${mangatitle}"/"${fixed_chaptername}"
 
+    recuperado=$(get_chapter_images "$mangatitle" "$chaptername")
+
     for page_url in $(get_chapter_images "$mangatitle" "$chaptername"); do
         # Get page number
         page=$(echo "$page_url" |
             grep -oP "[0-9]+\.jpg" | sed 's/\.jpg//g')
 
+        page_url=$(echo "$page_url" | sed 's/madcdnv2/mbcdnv1/g')
         # Fix the chapter name, adding zeroes to the chapter number
         download_image "$page_url" > \
             "${mangatitle}/${fixed_chaptername}/p$(echo "$page" |
@@ -134,7 +133,7 @@ download_multiple_chapters () {
     for chapter_number in $(seq "$first_selected" "$last_selected"); do
         matching_chapters=$(chapters_matching_number "$chapter_number" "$chapters")
         for chapter in $matching_chapters; do
-            echo "${blue}Downloading chapter ${chapter_number}..."
+            echo "Downloading chapter ${chapter_number}..."
             download_chapter "$title" "$chapter" "$chapter_number"
         done
     done
@@ -145,16 +144,16 @@ check_inputs () {
     last_selected="$2"
     last_chapter="$3"
 
-    [ -z "$first_selected" ] && die "${red}Invalid input"
-	[ "$first_selected" -eq "$first_selected" ] 2>/dev/null || die "${red}Invalid number"
+    [ -z "$first_selected" ] && die "Invalid input"
+	[ "$first_selected" -eq "$first_selected" ] 2>/dev/null || die "Invalid number"
 
     if [ -n "$last_chapter" ]; then
-        [ "$last_selected" -eq "$last_selected" ] 2>/dev/null || die "${red}Invalid number"
+        [ "$last_selected" -eq "$last_selected" ] 2>/dev/null || die "Invalid number"
         if [ "$last_chapter" -lt "$last_selected" ]; then
-            die "${red}Chapter out of range"
+            die "Chapter out of range"
         fi
         if [ "$last_selected" -lt "$first_selected" ]; then
-            die "${red}Invalid range"
+            die "Invalid range"
         fi
     fi
 }
@@ -166,7 +165,7 @@ while getopts "ht:n" OPT; do
     "h") usage;exit;; # show help
     "t") query=$OPTARG;;
     "n") notshow=1;;
-    "?") die "${red}Invalid parameter";;
+    "?") die "Invalid parameter";;
   esac
 done
 
@@ -175,18 +174,18 @@ if [ -z "$query" ]; then
     read -r query
 fi
 
-echo "${blue}Searching title..."
+echo "Searching title..."
 response=$(search_title "$query")
 
-[ -z "$response" ] && die "${red}No results found"
+[ -z "$response" ] && die "No results found"
 
 title=$(echo "$response" | fzf)
 
 chapters=$(get_chapters_names "$title")
 last_chapter=$(get_last_chapter "$chapters")
 
-echo "${purple}Download a single chapter: ${yellow}chapter_number"
-echo "${purple}Download multiple chapters: ${yellow}first_chapter ${yellow}last_chapter${green}"
+echo "Download a single chapter: chapter_number"
+echo "Download multiple chapters: first_chapter last_chapter"
 printf "Available chapters (1-%d): " "${last_chapter}"
 read -r first_selected last_selected
 
