@@ -1,5 +1,7 @@
 #!/bin/sh
 
+PREFIX='s1.mbcdnv1.xyz'
+
 usage () {
     echo 'Usage:'
     echo ' -h    help text'
@@ -52,7 +54,7 @@ get_chapter_images () {
     --compressed |
         grep -oP "[a-z0-9_]+\.jpg" |
         sort -u |
-        sed "s|^|https://s1.madcdnv2.xyz/file/img-mbuddy/manga/${title}/${chapter}/|g"
+        sed "s|^|https://${PREFIX}/file/img-mbuddy/manga/${title}/${chapter}/|g"
 }
 
 
@@ -94,7 +96,7 @@ download_image () {
     #   -H 'accept-language: en-US,en;q=0.9' \
     #   --compressed
     curl -s "$url" \
-        -H 'authority: s1.mbcdnv1.xyz' \
+        -H "authority: ${PREFIX}" \
         -H 'pragma: no-cache' \
         -H 'Upgrade-Insecure-Requests: 1' \
         -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36' \
