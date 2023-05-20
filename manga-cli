@@ -1,7 +1,5 @@
 #!/bin/sh
 
-PREFIX='s1.mbcdnv1.xyz'
-
 usage () {
     echo 'Usage:'
     echo ' -h    help text'
@@ -15,17 +13,21 @@ die () {
 }
 
 search_title () {
+    # Remove spaces from the query search (it's an url)
     query=$(echo "$1" | sed 's/\ /%20/g')
+    # The titles come from the thumbs image names
     curl -s "https://mangabuddy.com/api/manga/search?q=${query}" |
         grep -oP 'thumb\/[0-9a-z\-]+' |
         sed 's/thumb\///g'
 }
 
+# Get all the chapter names available for the current title
 get_chapters_names () {
     curl -s "https://mangabuddy.com/api/manga/$1/chapters" |
         grep -oP "([a-z0-9]+\-)*chapter\-[0-9]+(\-[a-z0-9]+)*"
 }
 
+# It receives a list of avalilable chapters and get the last one
 get_last_chapter () {
     read -r last_chapter <<-EOF
     "$1"
@@ -36,28 +38,36 @@ get_last_chapter () {
         sed 's/chapter\-//g'
 }
 
+# Make a request to the page of the current chapter and
+# download all images available in it.
 get_chapter_images () {
     title="$1"
     chapter="$2"
 
     curl -s "https://mangabuddy.com/${title}/${chapter}" \
-        -H 'authority: mangabuddy.com' \
-        -H 'upgrade-insecure-requests: 1' \
-        -H 'user-agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0' \
-        -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9' \
-        -H 'sec-gpc: 1' \
-        -H 'sec-fetch-site: none' \
-        -H 'sec-fetch-mode: navigate' \
-        -H 'sec-fetch-user: ?1' \
-        -H 'sec-fetch-dest: document' \
-        -H 'accept-language: en-US,en;q=0.9' \
+      -H 'authority: mangabuddy.com' \
+      -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8' \
+      -H 'accept-language: en-US,en;q=0.7' \
+      -H 'cache-control: max-age=0' \
+      -H 'cookie: dark-mode=1' \
+      -H 'sec-ch-ua: "Brave";v="111", "Not(A:Brand";v="8", "Chromium";v="111"' \
+      -H 'sec-ch-ua-mobile: ?0' \
+      -H 'sec-ch-ua-platform: "Linux"' \
+      -H 'sec-fetch-dest: document' \
+      -H 'sec-fetch-mode: navigate' \
+      -H 'sec-fetch-site: none' \
+      -H 'sec-fetch-user: ?1' \
+      -H 'sec-gpc: 1' \
+      -H 'upgrade-insecure-requests: 1' \
+      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36' \
     --compressed |
-        grep -oP "[a-z0-9_]+\.jpg" |
-        sort -u |
-        sed "s|^|https://${PREFIX}/file/img-mbuddy/manga/${title}/${chapter}/|g"
+    # Get the urls from the chapter pages
+    grep -oP "https:\/\/.+?[a-z0-9_]+\.jpe?g(\?hash=[A-Za-z0-9_\-\&=]+)?" |
+    tail -n +7  # Remove the first 6 images since they are all repetitions
 }
 
-
+# Show only chapters matching the query number,
+# e.g., for chapter 550, return chapters 550, 550-1, 550-2 
 chapters_matching_number () {
     chapter_number="$1"
     chapters="$2"
@@ -65,38 +75,25 @@ chapters_matching_number () {
         grep -oP "([a-z0-9]+\-)*chapter\-${chapter_number}(\-[a-z0-9]+)*$"
 }
 
-clean_chaptername () {
+# Present the chapter number with leading zeroes followed by the chapter title
+format_chaptername () {
+    chaptername="$1"
     chapternumber="$2"
 
-    chaptername_prefix=$(printf "chapter-%03d"  "$chapternumber")
+    chaptername_prefix=$(printf "chapter-%04d"  "$chapternumber")
 
     # Get the last part after the chapter number
-    chaptername_suffix=$(echo "$1" |
+    chaptername_suffix=$(echo "$chaptername" |
         grep -oP "chapter(\-[0-9a-z]+)+" |
         sed 's/chapter-[a-z0-9]\+//g')
 
     echo "${chaptername_prefix}${chaptername_suffix}"
 }
+
 download_image () {
-    #url=$(echo "$1" | sed 's/madcdnv2/mbcdnv1/g')
     url="$1"
-    # curl -s "$url" \
-    #   -H 'authority: static.youmadcdn.xyz' \
-    #   -H 'pragma: no-cache' \
-    #   -H 'cache-control: no-cache' \
-    #   -H 'upgrade-insecure-requests: 1' \
-    #   -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36' \
-    #   -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9' \
-    #   -H 'sec-gpc: 1' \
-    #   -H 'sec-fetch-site: cross-site' \
-    #   -H 'sec-fetch-mode: navigate' \
-    #   -H 'sec-fetch-user: ?1' \
-    #   -H 'sec-fetch-dest: document' \
-    #   -H 'referer: https://mangabuddy.com/' \
-    #   -H 'accept-language: en-US,en;q=0.9' \
-    #   --compressed
-    curl -s "$url" \
-        -H "authority: ${PREFIX}" \
+    curl -s "$url"  \
+        -H "authority: 's1.mbcdnv1.xyz'" \
         -H 'pragma: no-cache' \
         -H 'Upgrade-Insecure-Requests: 1' \
         -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36' \
@@ -109,19 +106,19 @@ download_chapter () {
     chaptername="$2"
     chapter_number="$3"
 
-    fixed_chaptername=$(clean_chaptername "$chaptername" "$chapter_number")
+    # Get the chapter name and add leading zeroes to the chapter number
+    fixed_chaptername=$(format_chaptername "$chaptername" "$chapter_number")
 
     mkdir -p "${mangatitle}"/"${fixed_chaptername}"
 
-    recuperado=$(get_chapter_images "$mangatitle" "$chaptername")
+    page=0  # Page counter
 
     for page_url in $(get_chapter_images "$mangatitle" "$chaptername"); do
-        # Get page number
-        page=$(echo "$page_url" |
-            grep -oP "[0-9]+\.jpg" | sed 's/\.jpg//g')
+        page=$((page+1))
 
-        page_url=$(echo "$page_url" | sed 's/madcdnv2/mbcdnv1/g')
-        # Fix the chapter name, adding zeroes to the chapter number
+        echo "Downloading page ${page}..."
+
+        # Download a manga page, saving the file as pageXXX.jpg (with 3 leading zeroes)
         download_image "$page_url" > \
             "${mangatitle}/${fixed_chaptername}/p$(echo "$page" |
             awk '{printf("%03d", $page)}').jpg"
@@ -133,6 +130,7 @@ download_multiple_chapters () {
     last_selected="$2"
 
     for chapter_number in $(seq "$first_selected" "$last_selected"); do
+        # Get all the chapters matching the selected number
         matching_chapters=$(chapters_matching_number "$chapter_number" "$chapters")
         for chapter in $matching_chapters; do
             echo "Downloading chapter ${chapter_number}..."
@@ -141,19 +139,27 @@ download_multiple_chapters () {
     done
 }
 
+# Check if the inputs for the range of downloaded chapters are valid
 check_inputs () {
     first_selected="$1"
     last_selected="$2"
     last_chapter="$3"
 
     [ -z "$first_selected" ] && die "Invalid input"
+
+    # Check if the first chapter is a non-numeric value.
 	[ "$first_selected" -eq "$first_selected" ] 2>/dev/null || die "Invalid number"
 
     if [ -n "$last_chapter" ]; then
+        # Check if the last chapter is a non-numeric value.
         [ "$last_selected" -eq "$last_selected" ] 2>/dev/null || die "Invalid number"
+
+        # Check if the input number is higher than the last available chapter
         if [ "$last_chapter" -lt "$last_selected" ]; then
             die "Chapter out of range"
         fi
+
+        # Check if the last selected chapter is lower than the first
         if [ "$last_selected" -lt "$first_selected" ]; then
             die "Invalid range"
         fi
@@ -191,7 +197,7 @@ echo "Download multiple chapters: first_chapter last_chapter"
 printf "Available chapters (1-%d): " "${last_chapter}"
 read -r first_selected last_selected
 
-# If only a single chapter is selected
+# If only a single chapter is selected, the last and the first are the same
 if [ -z "$last_selected" ]; then
     last_selected="$first_selected"
 fi
